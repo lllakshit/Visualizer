@@ -1,0 +1,725 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="shortcut icon" href="Favicon.png" type="image/x-icon" />
+    <link rel="stylesheet" href="styles.css" />
+    <title>Neural Network Data Visualization</title>
+    <style>
+      body {
+        margin: 0;
+        padding: 0;
+        overflow: hidden;
+        background-color: #000;
+        font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+      }
+
+      #graph-container {
+        width: 100vw;
+        height: 100vh;
+      }
+
+      .info-panel {
+        position: absolute;
+        top: 20px;
+        left: 20px;
+        background-color: rgba(0, 10, 20, 0.8);
+        color: rgba(140, 240, 200, 0.9);
+        padding: 18px;
+        border-radius: 6px;
+        font-size: 14px;
+        z-index: 10;
+        border: 1px solid rgba(0, 180, 160, 0.3);
+        box-shadow: 0 0 20px rgba(0, 200, 170, 0.15);
+        backdrop-filter: blur(4px);
+        pointer-events: none;
+        max-width: 320px;
+        font-family: "Consolas", monospace;
+      }
+
+      .title {
+        font-size: 16px;
+        margin-bottom: 10px;
+        color: #fff;
+        text-shadow: 0 0 8px rgba(100, 255, 200, 0.6);
+        font-weight: 500;
+        letter-spacing: 0.5px;
+        border-bottom: 1px solid rgba(100, 255, 200, 0.2);
+        padding-bottom: 8px;
+      }
+
+      .instructions {
+        font-size: 12px;
+        color: rgba(180, 255, 220, 0.7);
+        line-height: 1.6;
+      }
+
+      .node-info {
+        position: absolute;
+        bottom: 20px;
+        right: 20px;
+        background-color: rgba(0, 10, 20, 0.8);
+        color: rgba(140, 240, 200, 0.9);
+        padding: 15px;
+        border-radius: 6px;
+        font-size: 13px;
+        z-index: 10;
+        border: 1px solid rgba(0, 180, 160, 0.3);
+        box-shadow: 0 0 20px rgba(0, 200, 170, 0.15);
+        backdrop-filter: blur(4px);
+        display: none;
+        max-width: 300px;
+        font-family: "Consolas", monospace;
+      }
+
+      .node-name {
+        font-weight: bold;
+        margin-bottom: 5px;
+        color: #fff;
+      }
+
+      .node-metrics {
+        font-size: 12px;
+        color: rgba(180, 255, 220, 0.7);
+      }
+
+      .loading-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.9);
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        z-index: 9999;
+        color: rgba(140, 240, 200, 0.9);
+        font-family: "Consolas", monospace;
+        flex-direction: column;
+      }
+
+      .loading-text {
+        margin-top: 20px;
+        font-size: 14px;
+      }
+
+      .loading-spinner {
+        border: 3px solid rgba(0, 0, 0, 0.1);
+        border-top: 3px solid rgba(140, 240, 200, 0.9);
+        border-radius: 50%;
+        width: 40px;
+        height: 40px;
+        animation: spin 1s linear infinite;
+      }
+
+      @keyframes spin {
+        0% {
+          transform: rotate(0deg);
+        }
+        100% {
+          transform: rotate(360deg);
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="graph-container"></div>
+
+    <div class="loading-overlay" id="loading">
+      <div class="loading-spinner"></div>
+      <div class="loading-text">
+        Initializing Neural Network Visualization...
+      </div>
+    </div>
+
+    <div class="info-panel">
+      <div class="title">ChatGPT Neural Network Visualization</div>
+      <div class="instructions">
+        DRAG: Rotate view<br />
+        SCROLL: Zoom in/out<br />
+        CLICK NODE: Focus & view connections<br />
+        DOUBLE-CLICK: Reset view<br />
+        HOVER: Display topic metadata
+      </div>
+    </div>
+
+    <div class="node-info" id="node-info">
+      <div class="node-name" id="node-name">Node Title</div>
+      <div class="node-metrics" id="node-metrics">
+        Connections: 0<br />
+        Relevance score: 0<br />
+        Semantic cluster: 0
+      </div>
+    </div>
+
+    <!-- Load Three.js first -->
+    <script src="https://cdn.jsdelivr.net/npm/three@0.152.2/build/three.min.js"></script>
+    <!-- Then load SpriteText -->
+    <script src="https://cdn.jsdelivr.net/npm/three-spritetext@1.8.1/dist/three-spritetext.min.js"></script>
+    <!-- Finally load 3D-Force-Graph -->
+    <script src="https://cdn.jsdelivr.net/npm/3d-force-graph@1.72.2/dist/3d-force-graph.min.js"></script>
+
+    <script>
+      // Make sure all libraries are loaded before proceeding
+      document.addEventListener("DOMContentLoaded", function () {
+        // Check if all required libraries are loaded
+        if (
+          typeof THREE === "undefined" ||
+          typeof SpriteText === "undefined" ||
+          typeof ForceGraph3D === "undefined"
+        ) {
+          console.error(
+            "Required libraries not loaded. Please check your internet connection and try again."
+          );
+          document.getElementById("loading").innerHTML =
+            "<div>Error loading libraries. Please refresh the page.</div>";
+          return;
+        }
+
+        const topics = [
+          "AI ML LLM Mastery",
+          "YouTube Growth Blueprint",
+          "Business Blindspots Breakdown",
+          "Controlling Neurons",
+          "Quantum Road",
+          "Physics Master",
+          "Physics Knowledge Roadmap",
+          "AI Basics Quiz",
+          "What is Consciousness",
+          "Certificate Modification Request",
+          "Bayes' Rule Explained Simply",
+          "New chat",
+          "Ghibli Style Request",
+          "Earth Acceleration",
+          "Spacetime",
+          "Quantum Tornadoes Discovery",
+          "Photon Storage in QMemory",
+          "Zero as a Real Number",
+          "1D Time Illustration",
+          "Time as a Dimension",
+          "Feb 2025 Planetary Alignment",
+          "AI Assistant Alternatives",
+          "Physics and Engineering Future",
+          "FAQ Management Script",
+          "DeepSeek API Pricing",
+          "Node.js and WordPress Integration",
+          "OpenAI API Migration",
+          "Fix Failed Thread Creation",
+          "Debug Design Model",
+          "Overview",
+          "Verification vs Validation Differences",
+          "Mastering SR and GR",
+          "Industrial Revolution Impact",
+          "Sociology Study Plan",
+          "AI Training",
+          "Sync Extension",
+          "Automatic Sync Configuration",
+          "Syncing Log Inputs",
+          "Sync Logs Display",
+          "Settings",
+          "Sync Error Handling Debug",
+          "Digital Marketing Summary",
+          "Copy Constructor Fix",
+          "Question Request by Topic",
+          "OOP Evolution Discussion",
+          "Advantages of OOP",
+          "Scheduling Status Update",
+          "Logic Simplify",
+          "Email Error Handling",
+        ];
+
+        // Define semantic clusters for realistic grouping
+        const semanticClusters = [
+          { name: "AI & Machine Learning", color: "#00c8ff" },
+          { name: "Physics & Science", color: "#00ffaa" },
+          { name: "Software Development", color: "#f0a0ff" },
+          { name: "Business & Marketing", color: "#ffcc00" },
+          { name: "General Topics", color: "#b0b0ff" },
+        ];
+
+        // Assign topics to clusters based on keywords
+        function getClusterForTopic(topic) {
+          const lowerTopic = topic.toLowerCase();
+
+          if (/ai|ml|llm|consciousness|training/i.test(lowerTopic)) {
+            return semanticClusters[0];
+          } else if (
+            /physics|quantum|space|time|dimension|acceleration/i.test(
+              lowerTopic
+            )
+          ) {
+            return semanticClusters[1];
+          } else if (
+            /node\.js|api|debug|error|sync|thread|code|oop/i.test(lowerTopic)
+          ) {
+            return semanticClusters[2];
+          } else if (
+            /business|growth|blueprint|marketing|summary/i.test(lowerTopic)
+          ) {
+            return semanticClusters[3];
+          } else {
+            return semanticClusters[4];
+          }
+        }
+
+        // Create more professional nodes with metadata
+        const nodes = topics.map((topic, id) => {
+          const cluster = getClusterForTopic(topic);
+          const relevance = 0.5 + Math.random() * 0.5; // Random relevance score
+
+          return {
+            id,
+            name: topic,
+            color: cluster.color,
+            cluster: cluster.name,
+            clusterIndex: semanticClusters.indexOf(cluster),
+            relevance: relevance.toFixed(2),
+            val: Math.max(1, Math.min(topic.length / 4, 3)) * relevance,
+          };
+        });
+
+        // Generate more meaningful links based on semantic relationships
+        const links = [];
+
+        // First, connect nodes within the same cluster (higher probability)
+        for (let i = 0; i < nodes.length; i++) {
+          const node = nodes[i];
+          const clusterNodes = nodes.filter(
+            (n) => n.clusterIndex === node.clusterIndex && n.id !== node.id
+          );
+
+          // Connect to ~40% of nodes in same cluster
+          const connectionsCount = Math.floor(clusterNodes.length * 0.4);
+          const shuffled = [...clusterNodes].sort(() => 0.5 - Math.random());
+
+          for (
+            let j = 0;
+            j < Math.min(connectionsCount, shuffled.length);
+            j++
+          ) {
+            links.push({
+              source: node.id,
+              target: shuffled[j].id,
+              strength: 0.05 + Math.random() * 0.1,
+              value: 1 + Math.random(),
+            });
+          }
+        }
+
+        // Then add some cross-cluster connections (lower probability)
+        for (let i = 0; i < nodes.length; i++) {
+          const node = nodes[i];
+          if (Math.random() < 0.3) {
+            // 30% chance for cross-cluster connection
+            const otherClusters = nodes.filter(
+              (n) => n.clusterIndex !== node.clusterIndex
+            );
+            if (otherClusters.length > 0) {
+              const target =
+                otherClusters[Math.floor(Math.random() * otherClusters.length)];
+
+              links.push({
+                source: node.id,
+                target: target.id,
+                strength: 0.01 + Math.random() * 0.05, // Weaker connection
+                value: 0.3 + Math.random() * 0.7,
+              });
+            }
+          }
+        }
+
+        // Count connections for each node
+        nodes.forEach((node) => {
+          node.connections = links.filter(
+            (link) => link.source === node.id || link.target === node.id
+          ).length;
+        });
+
+        // Helper function to mix colors
+        function mixColors(color1, color2, ratio) {
+          // Parse hex colors to r,g,b
+          function hexToRgb(hex) {
+            const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(
+              hex
+            );
+            return result
+              ? [
+                  parseInt(result[1], 16),
+                  parseInt(result[2], 16),
+                  parseInt(result[3], 16),
+                ]
+              : [120, 120, 120];
+          }
+
+          const rgb1 = hexToRgb(color1);
+          const rgb2 = hexToRgb(color2);
+
+          // Mix colors
+          const r = Math.round(rgb1[0] * (1 - ratio) + rgb2[0] * ratio);
+          const g = Math.round(rgb1[1] * (1 - ratio) + rgb2[1] * ratio);
+          const b = Math.round(rgb1[2] * (1 - ratio) + rgb2[2] * ratio);
+
+          return `${r}, ${g}, ${b}`;
+        }
+
+        try {
+          // Create the 3D force graph with professional appearance
+          const Graph = ForceGraph3D({
+            controlType: "orbit",
+            rendererConfig: {
+              antialias: true,
+              alpha: true,
+            },
+          })(document.getElementById("graph-container"))
+            .graphData({ nodes, links })
+            .backgroundColor("#000010")
+            .nodeLabel(null) // We'll use custom tooltips
+            .nodeColor((node) => node.color)
+            .nodeVal("val")
+            .nodeOpacity(0.85)
+            .nodeResolution(16) // Higher polygon count for smoother spheres
+            .linkWidth((link) => link.value * 0.5)
+            .linkColor((link) => {
+              const sourceNode = nodes.find(
+                (n) =>
+                  n.id ===
+                  (typeof link.source === "object"
+                    ? link.source.id
+                    : link.source)
+              );
+              const targetNode = nodes.find(
+                (n) =>
+                  n.id ===
+                  (typeof link.target === "object"
+                    ? link.target.id
+                    : link.target)
+              );
+              if (!sourceNode || !targetNode) return "rgba(100, 100, 100, 0.2)";
+
+              // Gradient based on source and target colors
+              return `rgba(${mixColors(
+                sourceNode.color,
+                targetNode.color,
+                0.5
+              )}, 0.2)`;
+            })
+            .linkOpacity(0.2)
+            .linkDirectionalParticles(3)
+            .linkDirectionalParticleWidth((link) => link.value * 0.8)
+            .linkDirectionalParticleSpeed((link) => link.value * 0.004)
+            .nodeThreeObject((node) => {
+              try {
+                // Create professional sphere with glow effect
+                const group = new THREE.Group();
+
+                // Core sphere
+                const geometry = new THREE.SphereGeometry(node.val, 16, 16);
+                const material = new THREE.MeshPhongMaterial({
+                  color: node.color,
+                  transparent: true,
+                  opacity: 0.7,
+                  shininess: 80,
+                });
+                const sphere = new THREE.Mesh(geometry, material);
+                group.add(sphere);
+
+                // Inner glow
+                const glowGeometry = new THREE.SphereGeometry(
+                  node.val * 1.2,
+                  16,
+                  16
+                );
+                const glowMaterial = new THREE.MeshBasicMaterial({
+                  color: node.color,
+                  transparent: true,
+                  opacity: 0.3,
+                  side: THREE.BackSide,
+                  blending: THREE.AdditiveBlending,
+                });
+                const glow = new THREE.Mesh(glowGeometry, glowMaterial);
+                group.add(glow);
+
+                // Optional: add small text label for important nodes
+                if (node.connections > 3) {
+                  const sprite = new SpriteText(node.name.substring(0, 1));
+                  sprite.color = "#ffffff";
+                  sprite.textHeight = node.val * 0.6;
+                  sprite.position.set(0, 0, 0);
+                  group.add(sprite);
+                }
+
+                return group;
+              } catch (e) {
+                console.error("Error creating node object:", e);
+                // Fallback to basic sphere if there's an error
+                const geometry = new THREE.SphereGeometry(node.val, 8, 8);
+                const material = new THREE.MeshBasicMaterial({
+                  color: node.color,
+                });
+                return new THREE.Mesh(geometry, material);
+              }
+            })
+            .onNodeHover((node) => {
+              document.body.style.cursor = node ? "pointer" : "default";
+
+              const nodeInfo = document.getElementById("node-info");
+              if (node) {
+                document.getElementById("node-name").textContent = node.name;
+                document.getElementById("node-metrics").innerHTML =
+                  `Connections: ${node.connections}<br>` +
+                  `Relevance score: ${node.relevance}<br>` +
+                  `Semantic cluster: ${node.cluster}`;
+                nodeInfo.style.display = "block";
+              } else {
+                nodeInfo.style.display = "none";
+              }
+            })
+            .onNodeClick((node) => {
+              // Highlight node and its connections
+              const distance = 100;
+              const distRatio =
+                1 + distance / Math.hypot(node.x, node.y, node.z);
+
+              // Focus on node with smooth camera transition
+              Graph.cameraPosition(
+                {
+                  x: node.x * distRatio,
+                  y: node.y * distRatio,
+                  z: node.z * distRatio,
+                },
+                node,
+                2000
+              );
+
+              // Create highlight effect for connected nodes
+              const highlightNodes = new Set();
+              const highlightLinks = new Set();
+
+              // Add the clicked node
+              highlightNodes.add(node);
+
+              // Find connected nodes and links
+              Graph.graphData().links.forEach((link) => {
+                const sourceId =
+                  typeof link.source === "object"
+                    ? link.source.id
+                    : link.source;
+                const targetId =
+                  typeof link.target === "object"
+                    ? link.target.id
+                    : link.target;
+
+                if (sourceId === node.id || targetId === node.id) {
+                  highlightLinks.add(link);
+                  highlightNodes.add(
+                    sourceId === node.id
+                      ? typeof link.target === "object"
+                        ? link.target
+                        : nodes.find((n) => n.id === link.target)
+                      : typeof link.source === "object"
+                      ? link.source
+                      : nodes.find((n) => n.id === link.source)
+                  );
+                }
+              });
+
+              // Update visual appearance based on highlights
+              Graph.nodeColor((n) =>
+                highlightNodes.has(n) ? n.color : "rgba(60, 60, 80, 0.1)"
+              )
+                .linkColor((link) => {
+                  if (!highlightLinks.has(link))
+                    return "rgba(60, 60, 80, 0.05)";
+
+                  const sourceNode =
+                    typeof link.source === "object"
+                      ? link.source
+                      : nodes.find((n) => n.id === link.source);
+                  const targetNode =
+                    typeof link.target === "object"
+                      ? link.target
+                      : nodes.find((n) => n.id === link.target);
+                  if (!sourceNode || !targetNode)
+                    return "rgba(200, 200, 255, 0.5)";
+
+                  return `rgba(${mixColors(
+                    sourceNode.color,
+                    targetNode.color,
+                    0.5
+                  )}, 0.6)`;
+                })
+                .linkWidth((link) =>
+                  highlightLinks.has(link) ? link.value * 1.5 : link.value * 0.2
+                )
+                .linkOpacity((link) => (highlightLinks.has(link) ? 0.6 : 0.05))
+                .linkDirectionalParticles((link) =>
+                  highlightLinks.has(link) ? 6 : 0
+                );
+
+              // Reset using double click
+              document.addEventListener("dblclick", resetHighlights);
+            });
+
+          // Double click to reset highlights
+          function resetHighlights() {
+            Graph.nodeColor((n) => n.color)
+              .linkColor((link) => {
+                const sourceNode =
+                  typeof link.source === "object"
+                    ? link.source
+                    : nodes.find((n) => n.id === link.source);
+                const targetNode =
+                  typeof link.target === "object"
+                    ? link.target
+                    : nodes.find((n) => n.id === link.target);
+                if (!sourceNode || !targetNode)
+                  return "rgba(100, 100, 100, 0.2)";
+
+                return `rgba(${mixColors(
+                  sourceNode.color,
+                  targetNode.color,
+                  0.5
+                )}, 0.2)`;
+              })
+              .linkWidth((link) => link.value * 0.5)
+              .linkOpacity(0.2)
+              .linkDirectionalParticles(3);
+
+            // Reset camera to default position
+            Graph.cameraPosition(
+              { x: 0, y: 0, z: 200 },
+              { x: 0, y: 0, z: 0 },
+              2000
+            );
+
+            document.removeEventListener("dblclick", resetHighlights);
+          }
+
+          // Add ambient light for professional 3D rendering
+          const ambientLight = new THREE.AmbientLight(0x444466, 0.8);
+          Graph.scene().add(ambientLight);
+
+          // Add directional light for subtle highlights
+          const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+          dirLight.position.set(200, 200, 200);
+          Graph.scene().add(dirLight);
+
+          // Add professional atmospheric background
+          function addAtmosphericBackground() {
+            try {
+              // Main background particles (sparse, distant stars)
+              addParticleLayer(800, 0.6, 400, 600, { r: 0.7, g: 0.8, b: 1.0 });
+
+              // Mid-layer particles (data points)
+              addParticleLayer(300, 0.8, 200, 300, { r: 0.2, g: 0.8, b: 0.7 });
+
+              // Foreground particles (active data)
+              addParticleLayer(150, 1.0, 100, 200, { r: 0.9, g: 1.0, b: 0.7 });
+            } catch (e) {
+              console.error("Error adding atmospheric background:", e);
+            }
+          }
+
+          function addParticleLayer(count, size, minRadius, maxRadius, color) {
+            const particleGeometry = new THREE.BufferGeometry();
+            const positions = new Float32Array(count * 3);
+            const colors = new Float32Array(count * 3);
+            const sizes = new Float32Array(count);
+
+            for (let i = 0; i < count; i++) {
+              // Position particles in a spherical shape
+              const radius =
+                minRadius + Math.random() * (maxRadius - minRadius);
+              const theta = Math.random() * Math.PI * 2;
+              const phi = Math.acos(2 * Math.random() - 1);
+
+              positions[i * 3] = radius * Math.sin(phi) * Math.cos(theta);
+              positions[i * 3 + 1] = radius * Math.sin(phi) * Math.sin(theta);
+              positions[i * 3 + 2] = radius * Math.cos(phi);
+
+              // Apply color variation
+              const intensity = 0.3 + Math.random() * 0.7;
+              colors[i * 3] = color.r * intensity;
+              colors[i * 3 + 1] = color.g * intensity;
+              colors[i * 3 + 2] = color.b * intensity;
+
+              // Vary particle sizes
+              sizes[i] = (0.5 + Math.random() * 0.5) * size;
+            }
+
+            particleGeometry.setAttribute(
+              "position",
+              new THREE.BufferAttribute(positions, 3)
+            );
+            particleGeometry.setAttribute(
+              "color",
+              new THREE.BufferAttribute(colors, 3)
+            );
+            particleGeometry.setAttribute(
+              "size",
+              new THREE.BufferAttribute(sizes, 1)
+            );
+
+            const particleMaterial = new THREE.PointsMaterial({
+              size: size,
+              vertexColors: true,
+              transparent: true,
+              opacity: 0.5,
+              blending: THREE.AdditiveBlending,
+              sizeAttenuation: true,
+            });
+
+            const particles = new THREE.Points(
+              particleGeometry,
+              particleMaterial
+            );
+            Graph.scene().add(particles);
+
+            // Subtle animation
+            let frame = 0;
+            function animateParticles() {
+              frame += 0.0005;
+
+              for (let i = 0; i < count; i++) {
+                const i3 = i * 3;
+                const amp = 0.1 * ((i % 5) + 1);
+
+                // Apply subtle wave motion
+                positions[i3 + 1] += Math.sin(frame + i * 0.1) * amp * 0.05;
+                positions[i3] += Math.cos(frame + i * 0.05) * amp * 0.05;
+              }
+
+              particleGeometry.attributes.position.needsUpdate = true;
+              requestAnimationFrame(animateParticles);
+            }
+
+            animateParticles();
+          }
+
+          // Add fog to enhance depth perception
+          Graph.scene().fog = new THREE.FogExp2(0x000010, 0.0015);
+
+          // Set initial camera position for best view
+          Graph.cameraPosition({ z: 200 });
+
+          // Hide loading overlay after everything is loaded
+          setTimeout(() => {
+            document.getElementById("loading").style.display = "none";
+            addAtmosphericBackground();
+          }, 1500);
+
+          // Add a console message to confirm successful initialization
+          console.log("Neural Network Visualization successfully initialized");
+        } catch (error) {
+          console.error("Error initializing visualization:", error);
+          document.getElementById(
+            "loading"
+          ).innerHTML = `<div>Error initializing visualization: ${error.message}</div>
+                     <div style="margin-top: 10px;">Please refresh the page or check console for details.</div>`;
+        }
+      });
+    </script>
+  </body>
+</html>
